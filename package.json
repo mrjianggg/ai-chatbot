@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "build": "tsx lib/db/migrate && next build",
-    "start": "next start",
+    "start": "next start -p 10808",
     "lint": "next lint && biome lint --write --unsafe",
     "lint:fix": "next lint --fix && biome lint --write --unsafe",
     "format": "biome format --write",
@@ -15,7 +15,9 @@
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",
     "db:check": "drizzle-kit check",
-    "db:up": "drizzle-kit up"
+    "db:up": "drizzle-kit up",
+    "prod:build": "pnpm run build && pnpm run db:migrate",
+    "prod:start": "pm2 start --name ai-chatbot npm -- start"
   },
   "dependencies": {
     "@ai-sdk/fireworks": "^0.1.8",
