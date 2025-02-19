@@ -6,7 +6,7 @@ import {
   wrapLanguageModel,
 } from 'ai';
 
-export const DEFAULT_CHAT_MODEL: string = 'deepseek-r1:32b';
+export const DEFAULT_CHAT_MODEL: string = 'chat-model-small';
 
 export const myProvider = customProvider({
   languageModels: {
@@ -25,7 +25,6 @@ export const myProvider = customProvider({
   },
 });
 
-
 interface ChatModel {
   id: string;
   name: string;
@@ -34,14 +33,18 @@ interface ChatModel {
 
 export const chatModels: Array<ChatModel> = [
   {
-    id: 'deepseek-r1:32b',
-    name: 'DeepSeek-R1',
-    description: ''
-    // description: '32B parameter version of DeepSeek-R1 model'
+    id: 'chat-model-small',
+    name: 'Small model',
+    description: 'Small model for fast, lightweight tasks',
   },
-  // {
-  //   id: 'deepseek-r1:16b',
-  //   name: 'DeepSeek-R1 (16B)',
-  //   description: '16B parameter version for faster response'
-  // }
+  {
+    id: 'chat-model-large',
+    name: 'Large model',
+    description: 'Large model for complex, multi-step tasks',
+  },
+  {
+    id: 'chat-model-reasoning',
+    name: 'Reasoning model',
+    description: 'Uses advanced reasoning',
+  },
 ];

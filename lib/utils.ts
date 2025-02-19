@@ -1,25 +1,49 @@
-import type { Document } from '@/lib/db/schema';
+import type {
+  CoreAssistantMessage,
+  CoreToolMessage,
+  Message,
+  TextStreamPart,
+  ToolInvocation,
+  ToolSet,
+} from 'ai';
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-// 添加核心fetcher函数
-export const fetcher = async <T = any>(url: string): Promise<T> => {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const errorData = await res.json();
-    const error = new Error(errorData.message || 'API请求失败');
-    (error as any).status = res.status;
-    throw error;
-  }
-  return res.json();
-};
+import type { Message as DBMessage, Document } from '@/lib/db/schema';
 
-// 样式工具函数保持不变
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// UUID生成器（保持不变）
+interface ApplicationError extends Error {
+  info: string;
+  status: number;
+}
+
+export const fetcher = async (url: string) => {
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const error = new Error(
+      'An error occurred while fetching the data.',
+    ) as ApplicationError;
+
+    error.info = await res.json();
+    error.status = res.status;
+
+    throw error;
+  }
+
+  return res.json();
+};
+
+export function getLocalStorage(key: string) {
+  if (typeof window !== 'undefined') {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  }
+  return [];
+}
+
 export function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -28,70 +52,180 @@ export function generateUUID(): string {
   });
 }
 
-// 简化后的消息接口
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: Date;
-  attachments?: Array<{
-    url: string;
-    name: string;
-    contentType: string;
-  }>;
+function addToolMessageToChat({
+  toolMessage,
+  messages,
+}: {
+  toolMessage: CoreToolMessage;
+  messages: Array<Message>;
+}): Array<Message> {
+  return messages.map((message) => {
+    if (message.toolInvocations) {
+      return {
+        ...message,
+        toolInvocations: message.toolInvocations.map((toolInvocation) => {
+          const toolResult = toolMessage.content.find(
+            (tool) => tool.toolCallId === toolInvocation.toolCallId,
+          );
+
+          if (toolResult) {
+            return {
+              ...toolInvocation,
+              state: 'result',
+              result: toolResult.result,
+            };
+          }
+
+          return toolInvocation;
+        }),
+      };
+    }
+
+    return message;
+  });
 }
 
-// 精简消息转换逻辑（移除工具调用处理）
-export function convertToUIMessages(messages: Array<DBMessage>): Array<Message> {
-  return messages.map(message => ({
-    id: message.id,
-    role: message.role as 'user' | 'assistant',
-    content: typeof message.content === 'string' 
-      ? message.content 
-      : JSON.stringify(message.content),
-    createdAt: message.createdAt,
-    attachments: message.attachments as Message['attachments']
-  }));
+export function convertToUIMessages(
+  messages: Array<DBMessage>,
+): Array<Message> {
+  return messages.reduce((chatMessages: Array<Message>, message) => {
+    if (message.role === 'tool') {
+      return addToolMessageToChat({
+        toolMessage: message as CoreToolMessage,
+        messages: chatMessages,
+      });
+    }
+
+    let textContent = '';
+    let reasoning: string | undefined = undefined;
+    const toolInvocations: Array<ToolInvocation> = [];
+
+    if (typeof message.content === 'string') {
+      textContent = message.content;
+    } else if (Array.isArray(message.content)) {
+      for (const content of message.content) {
+        if (content.type === 'text') {
+          textContent += content.text;
+        } else if (content.type === 'tool-call') {
+          toolInvocations.push({
+            state: 'call',
+            toolCallId: content.toolCallId,
+            toolName: content.toolName,
+            args: content.args,
+          });
+        } else if (content.type === 'reasoning') {
+          reasoning = content.reasoning;
+        }
+      }
+    }
+
+    chatMessages.push({
+      id: message.id,
+      role: message.role as Message['role'],
+      content: textContent,
+      reasoning,
+      toolInvocations,
+    });
+
+    return chatMessages;
+  }, []);
 }
 
-// 简化消息清洗逻辑（仅过滤空内容）
-export function sanitizeUIMessages(messages: Array<Message>): Array<Message> {
-  return messages.filter(msg => 
-    msg.content.trim().length > 0 || 
-    (msg.attachments?.length ?? 0) > 0
+type ResponseMessageWithoutId = CoreToolMessage | CoreAssistantMessage;
+type ResponseMessage = ResponseMessageWithoutId & { id: string };
+
+export function sanitizeResponseMessages({
+  messages,
+  reasoning,
+}: {
+  messages: Array<ResponseMessage>;
+  reasoning: string | undefined;
+}) {
+  const toolResultIds: Array<string> = [];
+
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      for (const content of message.content) {
+        if (content.type === 'tool-result') {
+          toolResultIds.push(content.toolCallId);
+        }
+      }
+    }
+  }
+
+  const messagesBySanitizedContent = messages.map((message) => {
+    if (message.role !== 'assistant') return message;
+
+    if (typeof message.content === 'string') return message;
+
+    const sanitizedContent = message.content.filter((content) =>
+      content.type === 'tool-call'
+        ? toolResultIds.includes(content.toolCallId)
+        : content.type === 'text'
+          ? content.text.length > 0
+          : true,
+    );
+
+    if (reasoning) {
+      // @ts-expect-error: reasoning message parts in sdk is wip
+      sanitizedContent.push({ type: 'reasoning', reasoning });
+    }
+
+    return {
+      ...message,
+      content: sanitizedContent,
+    };
+  });
+
+  return messagesBySanitizedContent.filter(
+    (message) => message.content.length > 0,
   );
 }
 
-// 新增流式处理工具
-export async function* processTextStream(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      yield decoder.decode(value);
+export function sanitizeUIMessages(messages: Array<Message>): Array<Message> {
+  const messagesBySanitizedToolInvocations = messages.map((message) => {
+    if (message.role !== 'assistant') return message;
+
+    if (!message.toolInvocations) return message;
+
+    const toolResultIds: Array<string> = [];
+
+    for (const toolInvocation of message.toolInvocations) {
+      if (toolInvocation.state === 'result') {
+        toolResultIds.push(toolInvocation.toolCallId);
+      }
     }
-  } finally {
-    reader.releaseLock();
-  }
+
+    const sanitizedToolInvocations = message.toolInvocations.filter(
+      (toolInvocation) =>
+        toolInvocation.state === 'result' ||
+        toolResultIds.includes(toolInvocation.toolCallId),
+    );
+
+    return {
+      ...message,
+      toolInvocations: sanitizedToolInvocations,
+    };
+  });
+
+  return messagesBySanitizedToolInvocations.filter(
+    (message) =>
+      message.content.length > 0 ||
+      (message.toolInvocations && message.toolInvocations.length > 0),
+  );
 }
 
-// 本地存储工具（保持不变）
-export function getLocalStorage(key: string) {
-  if (typeof window !== 'undefined') {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  }
-  return [];
+export function getMostRecentUserMessage(messages: Array<Message>) {
+  const userMessages = messages.filter((message) => message.role === 'user');
+  return userMessages.at(-1);
 }
 
-// 文档时间戳工具（保持不变）
 export function getDocumentTimestampByIndex(
   documents: Array<Document>,
-  index: number
+  index: number,
 ) {
   if (!documents) return new Date();
   if (index > documents.length) return new Date();
+
   return documents[index].createdAt;
 }
