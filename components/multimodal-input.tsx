@@ -1,362 +1,310 @@
 'use client';
 
-import type {
-  Attachment,
-  ChatRequestOptions,
-  CreateMessage,
-  Message,
-} from 'ai';
 import cx from 'classnames';
-import type React from 'react';
-import {
-  useRef,
-  useEffect,
-  useState,
-  useCallback,
-  type Dispatch,
-  type SetStateAction,
-  type ChangeEvent,
-  memo,
-} from 'react';
+import React from 'react';
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
-
-import { sanitizeUIMessages } from '@/lib/utils';
-
+import equal from 'fast-deep-equal';
+import { generateUUID } from '@/lib/utils';
 import { ArrowUpIcon, PaperclipIcon, StopIcon } from './icons';
-import { PreviewAttachment } from './preview-attachment';
+import { PreviewAttachmentA } from './preview-attachment-a';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
-import { SuggestedActions } from './suggested-actions';
-import equal from 'fast-deep-equal';
+
+interface Attachment {
+  url: string;
+  name: string;
+  contentType: string;
+}
+
+interface Message {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  createdAt: Date;
+  attachments?: Attachment[];
+}
 
 function PureMultimodalInput({
   chatId,
-  input,
-  setInput,
-  isLoading,
-  stop,
-  attachments,
-  setAttachments,
   messages,
   setMessages,
-  append,
-  handleSubmit,
   className,
 }: {
   chatId: string;
-  input: string;
-  setInput: (value: string) => void;
-  isLoading: boolean;
-  stop: () => void;
-  attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
   messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-  append: (
-    message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  handleSubmit: (
-    event?: {
-      preventDefault?: () => void;
-    },
-    chatRequestOptions?: ChatRequestOptions,
-  ) => void;
-  className?: string;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { width } = useWindowSize();
+  setMessages: React.Dispatch<React.SetStateAction<Array<Message>>>;
+} & React.ComponentProps<typeof Button>) {
+  const [input, setInput] = React.useState('');
+  const [attachments, setAttachments] = React.useState<Attachment[]>([]);
+  const [uploadQueue, setUploadQueue] = React.useState<string[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [previousContext, setPreviousContext] = React.useState<number[]>([]);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      adjustHeight();
-    }
-  }, []);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-  const adjustHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 2}px`;
-    }
-  };
-
-  const resetHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = '98px';
-    }
-  };
-
-  const [localStorageInput, setLocalStorageInput] = useLocalStorage(
-    'input',
-    '',
-  );
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      const domValue = textareaRef.current.value;
-      // Prefer DOM value over localStorage to handle hydration
-      const finalValue = domValue || localStorageInput || '';
-      setInput(finalValue);
-      adjustHeight();
-    }
-    // Only run once after hydration
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    setLocalStorageInput(input);
-  }, [input, setLocalStorageInput]);
-
-  const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
-    adjustHeight();
-  };
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
-
-  const submitForm = useCallback(() => {
-    window.history.replaceState({}, '', `/chat/${chatId}`);
-
-    handleSubmit(undefined, {
-      experimental_attachments: attachments,
+    setUploadQueue(prev => [...prev, ...files.map(f => f.name)]);
+    
+    files.forEach(file => {
+      setTimeout(() => {
+        setUploadQueue(prev => prev.filter(n => n !== file.name));
+        setAttachments(prev => [...prev, {
+          url: URL.createObjectURL(file),
+          name: file.name,
+          contentType: file.type
+        }]);
+      }, 1500);
     });
+  };
 
-    setAttachments([]);
-    setLocalStorageInput('');
-    resetHeight();
+  const stop = () => {
+    abortControllerRef.current?.abort();
+    setIsLoading(false);
+  };
 
-    if (width && width > 768) {
-      textareaRef.current?.focus();
+  const processResponse = (text: string) => {
+    let processed = text
+      .replace(/<think>|<\/think>/g, '')
+      .replace(/(\\\w+)\s*/g, '$1')
+      .replace(/\\boxed{([^}]*)/g, (_, content) => `\\boxed{${content}}`)
+      .replace(/\\([()])/g, '$1')
+      .replace(/\n{3,}/g, '\n\n');
+
+    const openMathBlocks = (processed.match(/\\(?:begin|boxed){/g) || []).length;
+    const closeMathBlocks = (processed.match(/\\(?:end|boxed)}/g) || []).length;
+    if (openMathBlocks > closeMathBlocks) {
+      processed += '}'.repeat(openMathBlocks - closeMathBlocks);
     }
-  }, [
-    attachments,
-    handleSubmit,
-    setAttachments,
-    setLocalStorageInput,
-    width,
-    chatId,
-  ]);
 
-  const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
+    return processed;
+  };
+
+  const submitForm = async () => {
+    if (!input.trim() && attachments.length === 0) return;
+
+    const userMessage: Message = {
+      id: generateUUID(),
+      role: 'user',
+      content: input,
+      createdAt: new Date(),
+      attachments: attachments.length > 0 ? attachments : undefined
+    };
+
+    const assistantMessageId = generateUUID();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      createdAt: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage, assistantMessage]);
+    setInput('');
+    setAttachments([]);
+    setUploadQueue([]);
 
     try {
-      const response = await fetch('/api/files/upload', {
+      setIsLoading(true);
+      abortControllerRef.current = new AbortController();
+      console.log('previousContext===',previousContext);
+      let contextData = [];
+      if (previousContext.length > 0) {
+        contextData = previousContext; 
+      }else{
+        contextData = [
+            151644,
+            6023,
+            151645,
+            151648,
+            271,
+            151649,
+            198,
+            198,
+            9707,
+            0,
+            2585,
+            646,
+            358,
+            7789,
+            498,
+            3351,
+            30,
+            26525,
+            232
+        ]
+      }
+
+      let bodyData  = {
+        model: 'deepseek-r1:32b',
+        prompt: input,
+        context: contextData,
+        stream: true
+      }
+
+      const response = await fetch('http://159.135.192.195:11434/api/generate', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData),
+        // signal: abortControllerRef.current.signal
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
 
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullResponse = '';
+      let pendingChunk = '';
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        while (true) {
+          const endIndex = buffer.indexOf('}') + 1;
+          try {
+            const jsonStr = buffer.slice(0, endIndex);
+            const data = JSON.parse(jsonStr);
+            console.log('data===',data);
+            if (data.context) {
+              console.log('data.context===',data.context);
+              // 在收到完成响应时保存context
+              setPreviousContext(data.context);
+            }
+            
+            if (data.response) {
+              pendingChunk += data.response
+                .replace(/\\u([\dA-F]{4})/gi, (_, hex) => 
+                  String.fromCharCode(parseInt(hex, 16))
+                );
+
+              if (pendingChunk.includes('\n') || data.done) {
+                fullResponse += processResponse(pendingChunk);
+                pendingChunk = '';
+                
+                setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId 
+                    ? { ...msg, content: fullResponse } 
+                    : msg
+                ));
+              }
+            }
+            
+            buffer = buffer.slice(endIndex);
+          } catch (error) {
+            break;
+          }
+        }
+        if (done) break;
       }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (error) {
-      toast.error('Failed to upload file, please try again!');
+
+      if (pendingChunk) {
+        fullResponse += processResponse(pendingChunk);
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantMessageId 
+            ? { ...msg, content: fullResponse } 
+            : msg
+        ));
+      }
+
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        toast.error(error.message || '请求失败');
+        setMessages(prev => prev.filter(msg => 
+          msg.id !== userMessage.id && msg.id !== assistantMessageId
+        ));
+      }
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
-
-  const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files || []);
-
-      setUploadQueue(files.map((file) => file.name));
-
-      try {
-        const uploadPromises = files.map((file) => uploadFile(file));
-        const uploadedAttachments = await Promise.all(uploadPromises);
-        const successfullyUploadedAttachments = uploadedAttachments.filter(
-          (attachment) => attachment !== undefined,
-        );
-
-        setAttachments((currentAttachments) => [
-          ...currentAttachments,
-          ...successfullyUploadedAttachments,
-        ]);
-      } catch (error) {
-        console.error('Error uploading files!', error);
-      } finally {
-        setUploadQueue([]);
-      }
-    },
-    [setAttachments],
-  );
 
   return (
     <div className="relative w-full flex flex-col gap-4">
-      {messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 && (
-          <SuggestedActions append={append} chatId={chatId} />
-        )}
-
       <input
         type="file"
-        className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
+        className="hidden"
         ref={fileInputRef}
         multiple
         onChange={handleFileChange}
-        tabIndex={-1}
       />
 
       {(attachments.length > 0 || uploadQueue.length > 0) && (
-        <div className="flex flex-row gap-2 overflow-x-scroll items-end">
-          {attachments.map((attachment) => (
-            <PreviewAttachment key={attachment.url} attachment={attachment} />
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {attachments.map((file) => (
+            <PreviewAttachmentA key={file.url} attachment={file} />
           ))}
-
-          {uploadQueue.map((filename) => (
-            <PreviewAttachment
-              key={filename}
-              attachment={{
-                url: '',
-                name: filename,
-                contentType: '',
-              }}
-              isUploading={true}
+          {uploadQueue.map((name) => (
+            <PreviewAttachmentA
+              key={name}
+              attachment={{ url: '', name, contentType: '' }}
+              isUploading
             />
           ))}
         </div>
       )}
 
-      <Textarea
-        ref={textareaRef}
-        placeholder="Send a message..."
-        value={input}
-        onChange={handleInput}
-        className={cx(
-          'min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base bg-muted pb-10 dark:border-zinc-700',
-          className,
-        )}
-        rows={2}
-        autoFocus
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-
-            if (isLoading) {
-              toast.error('Please wait for the model to finish its response!');
-            } else {
+      <div className="relative">
+        <Textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="输入消息..."
+          className={cx(
+            'min-h-[40px] max-h-[60vh] resize-none pr-12',
+            className
+          )}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
               submitForm();
             }
-          }
-        }}
-      />
-
-      <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start">
-        <AttachmentsButton fileInputRef={fileInputRef} isLoading={isLoading} />
-      </div>
-
-      <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
-        {isLoading ? (
-          <StopButton stop={stop} setMessages={setMessages} />
-        ) : (
-          <SendButton
-            input={input}
-            submitForm={submitForm}
-            uploadQueue={uploadQueue}
-          />
-        )}
+          }}
+        />
+        
+        <div className="absolute right-2 bottom-2 flex gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <PaperclipIcon className="h-4 w-4" />
+          </Button>
+          
+          {isLoading ? (
+            <Button
+              size="icon"
+              className="h-8 w-8"
+              onClick={stop}
+            >
+              <StopIcon className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              className="h-8 w-8"
+              onClick={submitForm}
+              disabled={!input.trim() && !attachments.length}
+            >
+              <ArrowUpIcon className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export const MultimodalInput = memo(
+export const MultimodalInput = React.memo(
   PureMultimodalInput,
-  (prevProps, nextProps) => {
-    if (prevProps.input !== nextProps.input) return false;
-    if (prevProps.isLoading !== nextProps.isLoading) return false;
-    if (!equal(prevProps.attachments, nextProps.attachments)) return false;
-
-    return true;
-  },
+  (prev, next) => equal(prev.messages, next.messages) && prev.input === next.input
 );
-
-function PureAttachmentsButton({
-  fileInputRef,
-  isLoading,
-}: {
-  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
-  isLoading: boolean;
-}) {
-  return (
-    <Button
-      className="rounded-md rounded-bl-lg p-[7px] h-fit dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-      onClick={(event) => {
-        event.preventDefault();
-        fileInputRef.current?.click();
-      }}
-      disabled={isLoading}
-      variant="ghost"
-    >
-      <PaperclipIcon size={14} />
-    </Button>
-  );
-}
-
-const AttachmentsButton = memo(PureAttachmentsButton);
-
-function PureStopButton({
-  stop,
-  setMessages,
-}: {
-  stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-}) {
-  return (
-    <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        stop();
-        setMessages((messages) => sanitizeUIMessages(messages));
-      }}
-    >
-      <StopIcon size={14} />
-    </Button>
-  );
-}
-
-const StopButton = memo(PureStopButton);
-
-function PureSendButton({
-  submitForm,
-  input,
-  uploadQueue,
-}: {
-  submitForm: () => void;
-  input: string;
-  uploadQueue: Array<string>;
-}) {
-  return (
-    <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        submitForm();
-      }}
-      disabled={input.length === 0 || uploadQueue.length > 0}
-    >
-      <ArrowUpIcon size={14} />
-    </Button>
-  );
-}
-
-const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
-  if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
-    return false;
-  if (prevProps.input !== nextProps.input) return false;
-  return true;
-});

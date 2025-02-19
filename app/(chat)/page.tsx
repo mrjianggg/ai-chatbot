@@ -10,7 +10,7 @@ export default async function Page() {
 
   const cookieStore = await cookies();
   const modelIdFromCookie = cookieStore.get('chat-model');
-
+  console.log('modelIdFromCookie===',modelIdFromCookie);
   if (!modelIdFromCookie) {
     return (
       <>

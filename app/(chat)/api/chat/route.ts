@@ -1,12 +1,9 @@
 import {
   type Message,
   createDataStreamResponse,
-  smoothStream,
-  streamText,
 } from 'ai';
 
 import { auth } from '@/app/(auth)/auth';
-import { myProvider } from '@/lib/ai/models';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
   deleteChatById,
@@ -27,6 +24,30 @@ import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
 
 export const maxDuration = 60;
+
+async function callCustomAI(prompt: string, model: string) {
+  try {
+    const response = await fetch('http://159.135.192.195:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "deepseek-r1:32b",
+        prompt: prompt
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    return response.body?.getReader();
+  } catch (error) {
+    console.error('API call error:', error);
+    throw error;
+  }
+}
 
 export async function POST(request: Request) {
   const {
@@ -60,68 +81,39 @@ export async function POST(request: Request) {
   });
 
   return createDataStreamResponse({
-    execute: (dataStream) => {
-      const result = streamText({
-        model: myProvider.languageModel(selectedChatModel),
-        system: systemPrompt({ selectedChatModel }),
-        messages,
-        maxSteps: 5,
-        experimental_activeTools:
-          selectedChatModel === 'chat-model-reasoning'
-            ? []
-            : [
-                'getWeather',
-                'createDocument',
-                'updateDocument',
-                'requestSuggestions',
-              ],
-        experimental_transform: smoothStream({ chunking: 'word' }),
-        experimental_generateMessageId: generateUUID,
-        tools: {
-          getWeather,
-          createDocument: createDocument({ session, dataStream }),
-          updateDocument: updateDocument({ session, dataStream }),
-          requestSuggestions: requestSuggestions({
-            session,
-            dataStream,
-          }),
-        },
-        onFinish: async ({ response, reasoning }) => {
-          if (session.user?.id) {
-            try {
-              const sanitizedResponseMessages = sanitizeResponseMessages({
-                messages: response.messages,
-                reasoning,
-              });
-
-              await saveMessages({
-                messages: sanitizedResponseMessages.map((message) => {
-                  return {
-                    id: message.id,
-                    chatId: id,
-                    role: message.role,
-                    content: message.content,
-                    createdAt: new Date(),
-                  };
-                }),
-              });
-            } catch (error) {
-              console.error('Failed to save chat');
-            }
+    execute: async (dataStream) => {
+      try {
+        const reader = await callCustomAI(userMessage.content, selectedChatModel);
+        
+        const processStream = async () => {
+          while (true) {
+            const { done, value } = await reader!.read();
+            if (done) break;
+            
+            const chunk = new TextDecoder().decode(value);
+            dataStream.append({
+              id: generateUUID(),
+              type: 'text',
+              content: chunk,
+              role: 'assistant',
+              createdAt: new Date(),
+            });
           }
-        },
-        experimental_telemetry: {
-          isEnabled: true,
-          functionId: 'stream-text',
-        },
-      });
+          dataStream.close();
+        };
 
-      result.mergeIntoDataStream(dataStream, {
-        sendReasoning: true,
-      });
+        processStream();
+      } catch (error) {
+        console.error('Stream processing error:', error);
+        dataStream.append({
+          type: 'error',
+          content: 'Oops, an error occurred!'
+        });
+        dataStream.close();
+      }
     },
     onError: () => {
-      return 'Oops, an error occured!';
+      return 'Oops, an error occurred!';
     },
   });
 }

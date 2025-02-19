@@ -1,6 +1,8 @@
+@import 'katex/dist/katex.min.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 
 :root {
     --foreground-rgb: 0, 0, 0;
@@ -175,4 +177,24 @@
 
 .suggestion-highlight {
     @apply bg-blue-200 hover:bg-blue-300 dark:hover:bg-blue-400/50 dark:text-blue-50 dark:bg-blue-500/40;
+}
+
+
+/* 数学公式样式 */
+.katex-block {
+    @apply my-4 p-4 bg-gray-50 rounded-lg overflow-x-auto;
+    scrollbar-width: thin;
+    scrollbar-color: #ddd transparent;
+}
+
+.katex-block::-webkit-scrollbar {
+    @apply w-2 h-2;
+}
+
+.katex-block::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+}
+
+.katex .mfrac > span > span {
+    @apply text-sm;
 }
