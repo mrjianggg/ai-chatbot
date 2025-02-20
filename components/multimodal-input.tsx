@@ -1,4 +1,3 @@
-// src/components/multimodal-input.tsx
 'use client';
 
 import cx from 'classnames';
@@ -75,14 +74,12 @@ function PureMultimodalInput({
     const currentInput = input.trim();
     if (!currentInput || actualIsLoading) return;
 
-    // 立即清空输入框
     setInput('');
     setLocalIsLoading(true);
     const userMessageId = Date.now().toString();
     tempAssistantIdRef.current = `temp-${Date.now()}`;
 
     try {
-      // 使用当前输入的快照
       await append({
         id: userMessageId,
         content: currentInput,
@@ -97,23 +94,21 @@ function PureMultimodalInput({
         createdAt: new Date()
       }]);
 
-      controllerRef.current = new AbortController();
-      
+      // 创建新的AbortController
+      const controller = new AbortController();
+      controllerRef.current = controller;
+
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Access-Control-Request-Headers': 'Content-Type',
-          'Access-Control-Request-Method': 'POST'
         },
-        mode: 'cors', // 强制 CORS 模式
         body: JSON.stringify({ 
           model: DEFAULT_MODEL,
           prompt: currentInput,
-          // stream: true,
           context: contextRef.current.length > 0 ? contextRef.current : undefined
         }),
-        signal: controllerRef.current.signal
+        signal: controller.signal
       });
 
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -127,13 +122,15 @@ function PureMultimodalInput({
         response,
         setMessages,
         tempAssistantIdRef.current!,
-        controllerRef.current,
+        controller,
         handleNewContext
       );
 
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        // 出错时恢复输入内容
+      // 关键修复：区分中止错误和其他错误
+      if (error.name === 'AbortError') {
+        console.log('Request aborted by user');
+      } else {
         setInput(currentInput);
         toast.error(error.message || '请求失败');
         setMessages(prev => {
@@ -143,14 +140,17 @@ function PureMultimodalInput({
         contextRef.current = [];
       }
     } finally {
-      setLocalIsLoading(false);
+      // 清理操作
+      controllerRef.current = undefined;
       tempAssistantIdRef.current = undefined;
+      setLocalIsLoading(false);
       if (width! > 768) textareaRef.current?.focus();
     }
   }, [input, actualIsLoading, setMessages, width, setInput, append]);
 
   const handleStop = useCallback(() => {
     if (controllerRef.current) {
+      // 先停止流处理再中止请求
       controllerRef.current.abort();
       setMessages(prev => {
         const lastIndex = prev.findIndex(m => m.id === tempAssistantIdRef.current);
@@ -160,23 +160,6 @@ function PureMultimodalInput({
     }
     onStop?.();
   }, [setMessages, onStop]);
-
-  const aaa = (async () =>{
-    console.log('aaaa');
-    controllerRef.current = new AbortController();
-    const response = await fetch('https://admin.aleo.info/api/project/add', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Request-Headers': 'Content-Type',
-        'Access-Control-Request-Method': 'POST'
-      },
-      mode: 'cors', // 强制 CORS 模式
-      body: JSON.stringify({"name":"1aaa11","category":"2233aa222","desc":"3332aa3","twitter":"22aa232","website":"44aa3","email":"34aa3","telegram":"","discord":"","github":"","whitepaper":"","more":"","status":"待审核"}),
-      signal: controllerRef.current.signal
-    });
-    console.log('response===',response);
-  })
 
   return (
     <div className="relative w-full flex flex-col gap-4">
@@ -214,7 +197,7 @@ function PureMultimodalInput({
           }
         }}
       />
-      {/* <div onClick={aaa}>AAAAAAAAAAAAAAA</div> */}
+
       <div className="absolute bottom-0 right-0 p-2 flex gap-2">
         {actualIsLoading ? (
           <Button

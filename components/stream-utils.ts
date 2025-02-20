@@ -1,3 +1,4 @@
+// components/stream-utils.ts
 interface Message {
   id: string;
   content: string;
@@ -21,7 +22,6 @@ export const processAIStream = async (
   let updatePending = false;
   let finalContext: number[] = [];
 
-  // Throttle message updates
   const throttledUpdate = () => {
     if (!updatePending) {
       updatePending = true;
@@ -40,6 +40,12 @@ export const processAIStream = async (
 
   try {
     while (true) {
+      // 添加中止检查
+      if (controller.signal.aborted) {
+        console.log('Stream processing aborted');
+        break;
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -52,24 +58,22 @@ export const processAIStream = async (
         try {
           const jsonResponse = JSON.parse(jsonStr);
           
-          // Capture context data
           if (jsonResponse.context) {
             finalContext = jsonResponse.context;
           }
 
-          // Formatting handlers
           let content = jsonResponse.response || '';
           content = content
-          .replace(/\\times\b/g, '×')       // 替换 \times 为 ×
-          .replace(/\\div\b/g, '÷')        // 顺带处理除号
-          .replace(/\\pm\b/g, '±');        // 处理加减号
+            .replace(/\\times\b/g, '×')
+            .replace(/\\div\b/g, '÷')
+            .replace(/\\pm\b/g, '±');
+
           if (content === '\\boxed{}') {
             content = '\\boxed{\\ }';
           } else if (content.startsWith('\\boxed') && !content.endsWith('}')) {
             content += '}';
           }
 
-          // Code block detection
           if (content.includes('```')) {
             isCodeBlock = !isCodeBlock;
           }
@@ -82,12 +86,10 @@ export const processAIStream = async (
       }
     }
 
-    // Final context update
     if (typeof onContext === 'function' && finalContext.length > 0) {
       onContext(finalContext);
     }
 
-    // Final message update
     setMessages(prev => 
       prev.map(msg => 
         msg.id === tempAssistantId 
@@ -96,6 +98,13 @@ export const processAIStream = async (
       )
     );
   } catch (error) {
+    // 关键修复：忽略中止错误
+    // @ts-ignore 强制忽略类型检查
+    if (error && error.name === 'AbortError') {
+      console.log('Stream processing aborted normally');
+      return;
+    }
+    
     console.error('Stream processing error:', error);
     setMessages(prev => {
       const last = prev[prev.length - 1];
