@@ -20,44 +20,14 @@ export const Overview = () => {
           <MessageIcon size={32} />
         </p>
         <p>
-        ✨ Welcome! ✨
+          Hi there! I&apos;m your AI assistant, ready to help.  
         </p>
         <p>
-        Hi there! I'm your AI assistant, ready to help.
+          Ask me anything &ndash; let&apos;s explore solutions together!  
         </p>
         <p>
-        Ask me anything – let's explore solutions together!
+          Let me know if you&apos;d like adjustments! 
         </p>
-        <p>
-        Let me know if you'd like adjustments!
-        </p>
-        {/* <p>
-          This is an{' '}
-          <Link
-            className="font-medium underline underline-offset-4"
-            href="https://github.com/vercel/ai-chatbot"
-            target="_blank"
-          >
-            open source
-          </Link>{' '}
-          chatbot template built with Next.js and the AI SDK by Vercel. It uses
-          the{' '}
-          <code className="rounded-md bg-muted px-1 py-0.5">streamText</code>{' '}
-          function in the server and the{' '}
-          <code className="rounded-md bg-muted px-1 py-0.5">useChat</code> hook
-          on the client to create a seamless chat experience.
-        </p>
-        <p>
-          You can learn more about the AI SDK by visiting the{' '}
-          <Link
-            className="font-medium underline underline-offset-4"
-            href="https://sdk.vercel.ai/docs"
-            target="_blank"
-          >
-            docs
-          </Link>
-          .
-        </p> */}
       </div>
     </motion.div>
   );
