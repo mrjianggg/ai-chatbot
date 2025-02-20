@@ -102,14 +102,14 @@ function PureMultimodalInput({
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json'
-          // 'Origin': window.location.origin // 显式声明来源
+          'Content-Type': 'application/json',
+          'Origin': window.location.origin // 显式声明来源
         },
-        // mode: 'cors', // 强制 CORS 模式
+        mode: 'cors', // 强制 CORS 模式
         body: JSON.stringify({ 
           model: DEFAULT_MODEL,
           prompt: currentInput,
-          stream: true,
+          // stream: true,
           context: contextRef.current.length > 0 ? contextRef.current : undefined
         }),
         signal: controllerRef.current.signal
