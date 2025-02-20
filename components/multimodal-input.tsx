@@ -214,7 +214,7 @@ function PureMultimodalInput({
           }
         }}
       />
-      <div onClick={aaa}>AAAAAAAAAAAAAAA</div>
+      {/* <div onClick={aaa}>AAAAAAAAAAAAAAA</div> */}
       <div className="absolute bottom-0 right-0 p-2 flex gap-2">
         {actualIsLoading ? (
           <Button

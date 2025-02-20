@@ -59,6 +59,10 @@ export const processAIStream = async (
 
           // Formatting handlers
           let content = jsonResponse.response || '';
+          content = content
+          .replace(/\\times\b/g, '×')       // 替换 \times 为 ×
+          .replace(/\\div\b/g, '÷')        // 顺带处理除号
+          .replace(/\\pm\b/g, '±');        // 处理加减号
           if (content === '\\boxed{}') {
             content = '\\boxed{\\ }';
           } else if (content.startsWith('\\boxed') && !content.endsWith('}')) {

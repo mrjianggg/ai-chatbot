@@ -1,13 +1,40 @@
 import Link from 'next/link';
-import React, { memo } from 'react';
+import React, { memo, ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { CodeBlock } from './code-block';
+
+type SimpleProps = { children?: ReactNode };
+
+// 新增数学符号转换函数
+const convertMathSymbols = (text: string) => {
+  return text
+    .replace(/(^|\s)\\times(\s|$)/g, '$1×$2')
+    .replace(/(^|\s)\\div(\s|$)/g, '$1÷$2')
+    .replace(/(^|\s)\\pm(\s|$)/g, '$1±$2')
+    .replace(/(^|\s)\\cdot(\s|$)/g, '$1·$2')
+    .replace(/(^|\s)\\leq(\s|$)/g, '$1≤$2')
+    .replace(/(^|\s)\\geq(\s|$)/g, '$1≥$2');
+};
 
 const components: Partial<Components> = {
   // @ts-expect-error
   code: CodeBlock,
   pre: ({ children }) => <>{children}</>,
+  // 新增数学公式处理
+  math: ({ children }: SimpleProps) => (
+    <span className="math-inline">{convertMathSymbols(String(children))}</span>
+  ),
+  inlineMath: ({ children }: SimpleProps) => (
+    <span className="math-inline">{convertMathSymbols(String(children))}</span>
+  ),
+  // 修改文本节点处理
+  text: ({ node, children, ...props }) => {
+    const processedText = convertMathSymbols(String(children));
+    return <>{processedText}</>;
+  },
   ol: ({ node, children, ...props }) => {
     return (
       <ol className="list-decimal list-outside ml-4" {...props}>
@@ -93,12 +120,21 @@ const components: Partial<Components> = {
   },
 };
 
-const remarkPlugins = [remarkGfm];
+const remarkPlugins = [remarkGfm, remarkMath]; // 添加 remark-math
 
 const NonMemoizedMarkdown = ({ children }: { children: string }) => {
+  // 预处理内容
+  const processedContent = convertMathSymbols(children)
+    .replace(/\$\$(.*?)\$\$/g, (_, p1) => `\$$${p1}\$$`)  // 转换块级公式
+    .replace(/\$(.*?)\$/g, (_, p1) => `\$$${p1}\$$`);    // 转换行内公式
+
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-      {children}
+    <ReactMarkdown 
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={[rehypeKatex]}  // 添加 Katex 支持
+      components={components}
+    >
+      {processedContent}
     </ReactMarkdown>
   );
 };
