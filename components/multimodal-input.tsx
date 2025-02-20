@@ -1,362 +1,231 @@
+// src/components/multimodal-input.tsx
 'use client';
 
-import type {
-  Attachment,
-  ChatRequestOptions,
-  CreateMessage,
-  Message,
-} from 'ai';
 import cx from 'classnames';
-import type React from 'react';
+import React from 'react';
 import {
   useRef,
   useEffect,
   useState,
   useCallback,
-  type Dispatch,
-  type SetStateAction,
-  type ChangeEvent,
-  memo,
+  memo
 } from 'react';
 import { toast } from 'sonner';
-import { useLocalStorage, useWindowSize } from 'usehooks-ts';
-
-import { sanitizeUIMessages } from '@/lib/utils';
-
-import { ArrowUpIcon, PaperclipIcon, StopIcon } from './icons';
-import { PreviewAttachment } from './preview-attachment';
+import { useWindowSize } from 'usehooks-ts';
+import { ArrowUpIcon, StopIcon } from './icons';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { SuggestedActions } from './suggested-actions';
 import equal from 'fast-deep-equal';
+import { processAIStream } from './stream-utils';
+import { Message, CreateMessage, ChatRequestOptions } from 'ai';
+
+const API_ENDPOINT = 'http://159.135.192.195:11434/api/generate';
+const DEFAULT_MODEL = 'deepseek-r1:32b';
+
+export interface ChatMessage {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  createdAt: Date;
+}
 
 function PureMultimodalInput({
   chatId,
+  messages,
+  setMessages,
+  className,
   input,
   setInput,
   isLoading,
-  stop,
-  attachments,
-  setAttachments,
-  messages,
-  setMessages,
+  stop: onStop,
   append,
-  handleSubmit,
-  className,
 }: {
   chatId: string;
+  messages: ChatMessage[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  className?: string;
   input: string;
-  setInput: (value: string) => void;
+  setInput: React.Dispatch<React.SetStateAction<string>>;
   isLoading: boolean;
   stop: () => void;
-  attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
-  messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-  append: (
-    message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  handleSubmit: (
-    event?: {
-      preventDefault?: () => void;
-    },
-    chatRequestOptions?: ChatRequestOptions,
-  ) => void;
-  className?: string;
+  append: (message: ChatMessage) => Promise<void>;
 }) {
+  const controllerRef = useRef<AbortController>();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
+  const tempAssistantIdRef = useRef<string>();
+  const contextRef = useRef<number[]>([]);
+  const [localIsLoading, setLocalIsLoading] = useState(false);
+
+  const actualIsLoading = isLoading || localIsLoading;
 
   useEffect(() => {
-    if (textareaRef.current) {
-      adjustHeight();
-    }
-  }, []);
+    contextRef.current = [];
+  }, [chatId]);
 
-  const adjustHeight = () => {
+  useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 2}px`;
     }
-  };
+  }, [input]);
 
-  const resetHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = '98px';
-    }
-  };
+  const submitForm = useCallback(async () => {
+    const currentInput = input.trim();
+    if (!currentInput || actualIsLoading) return;
 
-  const [localStorageInput, setLocalStorageInput] = useLocalStorage(
-    'input',
-    '',
-  );
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      const domValue = textareaRef.current.value;
-      // Prefer DOM value over localStorage to handle hydration
-      const finalValue = domValue || localStorageInput || '';
-      setInput(finalValue);
-      adjustHeight();
-    }
-    // Only run once after hydration
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    setLocalStorageInput(input);
-  }, [input, setLocalStorageInput]);
-
-  const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
-    adjustHeight();
-  };
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
-
-  const submitForm = useCallback(() => {
-    window.history.replaceState({}, '', `/chat/${chatId}`);
-
-    handleSubmit(undefined, {
-      experimental_attachments: attachments,
-    });
-
-    setAttachments([]);
-    setLocalStorageInput('');
-    resetHeight();
-
-    if (width && width > 768) {
-      textareaRef.current?.focus();
-    }
-  }, [
-    attachments,
-    handleSubmit,
-    setAttachments,
-    setLocalStorageInput,
-    width,
-    chatId,
-  ]);
-
-  const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
+    // 立即清空输入框
+    setInput('');
+    setLocalIsLoading(true);
+    const userMessageId = Date.now().toString();
+    tempAssistantIdRef.current = `temp-${Date.now()}`;
 
     try {
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
+      // 使用当前输入的快照
+      await append({
+        id: userMessageId,
+        content: currentInput,
+        role: 'user',
+        createdAt: new Date()
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+      setMessages(prev => [...prev, {
+        id: tempAssistantIdRef.current!,
+        content: '',
+        role: 'assistant',
+        createdAt: new Date()
+      }]);
 
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
+      controllerRef.current = new AbortController();
+      
+      const response = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          model: DEFAULT_MODEL,
+          prompt: currentInput,
+          stream: true,
+          context: contextRef.current.length > 0 ? contextRef.current : undefined
+        }),
+        signal: controllerRef.current.signal
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.body) throw new Error('No response body');
+
+      const handleNewContext = (newContext: number[]) => {
+        contextRef.current = newContext;
+      };
+
+      await processAIStream(
+        response,
+        setMessages,
+        tempAssistantIdRef.current!,
+        controllerRef.current,
+        handleNewContext
+      );
+
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        // 出错时恢复输入内容
+        setInput(currentInput);
+        toast.error(error.message || '请求失败');
+        setMessages(prev => {
+          const lastIndex = prev.findIndex(m => m.id === tempAssistantIdRef.current);
+          return lastIndex !== -1 ? prev.slice(0, lastIndex) : prev;
+        });
+        contextRef.current = [];
       }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (error) {
-      toast.error('Failed to upload file, please try again!');
+    } finally {
+      setLocalIsLoading(false);
+      tempAssistantIdRef.current = undefined;
+      if (width! > 768) textareaRef.current?.focus();
     }
-  };
+  }, [input, actualIsLoading, setMessages, width, setInput, append]);
 
-  const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files || []);
-
-      setUploadQueue(files.map((file) => file.name));
-
-      try {
-        const uploadPromises = files.map((file) => uploadFile(file));
-        const uploadedAttachments = await Promise.all(uploadPromises);
-        const successfullyUploadedAttachments = uploadedAttachments.filter(
-          (attachment) => attachment !== undefined,
-        );
-
-        setAttachments((currentAttachments) => [
-          ...currentAttachments,
-          ...successfullyUploadedAttachments,
-        ]);
-      } catch (error) {
-        console.error('Error uploading files!', error);
-      } finally {
-        setUploadQueue([]);
-      }
-    },
-    [setAttachments],
-  );
+  const handleStop = useCallback(() => {
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      setMessages(prev => {
+        const lastIndex = prev.findIndex(m => m.id === tempAssistantIdRef.current);
+        return lastIndex !== -1 ? prev.slice(0, lastIndex) : prev;
+      });
+      contextRef.current = [];
+    }
+    onStop?.();
+  }, [setMessages, onStop]);
 
   return (
     <div className="relative w-full flex flex-col gap-4">
-      {messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 && (
-          <SuggestedActions append={append} chatId={chatId} />
-        )}
-
-      <input
-        type="file"
-        className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
-        ref={fileInputRef}
-        multiple
-        onChange={handleFileChange}
-        tabIndex={-1}
-      />
-
-      {(attachments.length > 0 || uploadQueue.length > 0) && (
-        <div className="flex flex-row gap-2 overflow-x-scroll items-end">
-          {attachments.map((attachment) => (
-            <PreviewAttachment key={attachment.url} attachment={attachment} />
-          ))}
-
-          {uploadQueue.map((filename) => (
-            <PreviewAttachment
-              key={filename}
-              attachment={{
-                url: '',
-                name: filename,
-                contentType: '',
-              }}
-              isUploading={true}
-            />
-          ))}
-        </div>
+      {messages.length === 0 && (
+        <SuggestedActions 
+          chatId={chatId}
+          append={async (message, _) => {
+            await append({
+              id: Date.now().toString(),
+              content: message.content,
+              role: 'user',
+              createdAt: new Date()
+            });
+            return '';
+          }}
+        />
       )}
 
       <Textarea
         ref={textareaRef}
-        placeholder="Send a message..."
+        placeholder="输入消息..."
         value={input}
-        onChange={handleInput}
+        onChange={(e) => setInput(e.target.value)}
         className={cx(
-          'min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base bg-muted pb-10 dark:border-zinc-700',
-          className,
+          'min-h-[24px] max-h-[75vh] resize-none rounded-2xl bg-muted pb-10',
+          'ring-2 ring-transparent focus:ring-primary/50 transition-all',
+          className
         )}
         rows={2}
         autoFocus
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-
-            if (isLoading) {
-              toast.error('Please wait for the model to finish its response!');
-            } else {
-              submitForm();
-            }
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !actualIsLoading) {
+            e.preventDefault();
+            submitForm();
           }
         }}
       />
 
-      <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start">
-        <AttachmentsButton fileInputRef={fileInputRef} isLoading={isLoading} />
-      </div>
-
-      <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
-        {isLoading ? (
-          <StopButton stop={stop} setMessages={setMessages} />
+      <div className="absolute bottom-0 right-0 p-2 flex gap-2">
+        {actualIsLoading ? (
+          <Button
+            variant="outline"
+            onClick={handleStop}
+            className="rounded-full p-2 hover:bg-destructive/10 hover:text-destructive"
+            aria-label="停止生成"
+          >
+            <div className="animate-pulse">
+              <StopIcon size={16} />
+            </div>
+          </Button>
         ) : (
-          <SendButton
-            input={input}
-            submitForm={submitForm}
-            uploadQueue={uploadQueue}
-          />
+          <Button
+            variant="outline"
+            onClick={submitForm}
+            disabled={!input.trim()}
+            className="rounded-full p-2 hover:bg-primary/10 hover:text-primary"
+            aria-label="发送消息"
+          >
+            <ArrowUpIcon size={16} />
+          </Button>
         )}
       </div>
     </div>
   );
 }
 
-export const MultimodalInput = memo(
-  PureMultimodalInput,
-  (prevProps, nextProps) => {
-    if (prevProps.input !== nextProps.input) return false;
-    if (prevProps.isLoading !== nextProps.isLoading) return false;
-    if (!equal(prevProps.attachments, nextProps.attachments)) return false;
-
-    return true;
-  },
+export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => 
+  equal(prev.messages, next.messages) && 
+  prev.className === next.className &&
+  prev.chatId === next.chatId &&
+  prev.input === next.input &&
+  prev.isLoading === next.isLoading &&
+  prev.stop === next.stop
 );
-
-function PureAttachmentsButton({
-  fileInputRef,
-  isLoading,
-}: {
-  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
-  isLoading: boolean;
-}) {
-  return (
-    <Button
-      className="rounded-md rounded-bl-lg p-[7px] h-fit dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-      onClick={(event) => {
-        event.preventDefault();
-        fileInputRef.current?.click();
-      }}
-      disabled={isLoading}
-      variant="ghost"
-    >
-      <PaperclipIcon size={14} />
-    </Button>
-  );
-}
-
-const AttachmentsButton = memo(PureAttachmentsButton);
-
-function PureStopButton({
-  stop,
-  setMessages,
-}: {
-  stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-}) {
-  return (
-    <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        stop();
-        setMessages((messages) => sanitizeUIMessages(messages));
-      }}
-    >
-      <StopIcon size={14} />
-    </Button>
-  );
-}
-
-const StopButton = memo(PureStopButton);
-
-function PureSendButton({
-  submitForm,
-  input,
-  uploadQueue,
-}: {
-  submitForm: () => void;
-  input: string;
-  uploadQueue: Array<string>;
-}) {
-  return (
-    <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        submitForm();
-      }}
-      disabled={input.length === 0 || uploadQueue.length > 0}
-    >
-      <ArrowUpIcon size={14} />
-    </Button>
-  );
-}
-
-const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
-  if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
-    return false;
-  if (prevProps.input !== nextProps.input) return false;
-  return true;
-});

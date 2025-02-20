@@ -176,3 +176,40 @@
 .suggestion-highlight {
     @apply bg-blue-200 hover:bg-blue-300 dark:hover:bg-blue-400/50 dark:text-blue-50 dark:bg-blue-500/40;
 }
+
+
+
+.chat-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  .message {
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 8px;
+  }
+  
+  .user {
+    background-color: #f0f0f0;
+  }
+  
+  .assistant {
+    background-color: #f8f8f8;
+  }
+  
+  .math-symbol {
+    font-family: "Symbola", "Arial Unicode MS", sans-serif;
+    font-size: 1.1em;
+  }
+  
+  .answer-box {
+    color: #10b981;
+    font-weight: 600;
+    padding: 4px 8px;
+    border: 2px solid #10b981;
+    border-radius: 4px;
+    display: inline-block;
+    margin-top: 8px;
+  }

@@ -335,7 +335,7 @@ function PureArtifact({
                 />
 
                 <form className="flex flex-row gap-2 relative items-end w-full px-4 pb-4">
-                  <MultimodalInput
+                  {/* <MultimodalInput
                     chatId={chatId}
                     input={input}
                     setInput={setInput}
@@ -348,7 +348,7 @@ function PureArtifact({
                     append={append}
                     className="bg-background dark:bg-muted"
                     setMessages={setMessages}
-                  />
+                  /> */}
                 </form>
               </div>
             </motion.div>

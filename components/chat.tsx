@@ -1,8 +1,9 @@
+// chat.tsx
 'use client';
 
 import type { Attachment, Message } from 'ai';
 import { useChat } from 'ai/react';
-import { useState } from 'react';
+import { SetStateAction, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 
 import { ChatHeader } from '@/components/chat-header';
@@ -10,7 +11,7 @@ import type { Vote } from '@/lib/db/schema';
 import { fetcher, generateUUID } from '@/lib/utils';
 
 import { Artifact } from './artifact';
-import { MultimodalInput } from './multimodal-input';
+import { ChatMessage, MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
 import { VisibilityType } from './visibility-selector';
 import { useArtifactSelector } from '@/hooks/use-artifact';
@@ -34,13 +35,12 @@ export function Chat({
   const {
     messages,
     setMessages,
-    handleSubmit,
     input,
     setInput,
-    append,
     isLoading,
     stop,
     reload,
+    handleSubmit, // 新增handleSubmit
   } = useChat({
     id,
     body: { id, selectedChatModel: selectedChatModel },
@@ -48,6 +48,7 @@ export function Chat({
     experimental_throttle: 100,
     sendExtraMessageFields: true,
     generateId: generateUUID,
+    api: '',
     onFinish: () => {
       mutate('/api/history');
     },
@@ -85,40 +86,43 @@ export function Chat({
           isArtifactVisible={isArtifactVisible}
         />
 
-        <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">
+        <div className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">
           {!isReadonly && (
             <MultimodalInput
               chatId={id}
               input={input}
               setInput={setInput}
-              handleSubmit={handleSubmit}
               isLoading={isLoading}
               stop={stop}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              messages={messages}
-              setMessages={setMessages}
-              append={append}
+              messages={messages as unknown as ChatMessage[]}
+              setMessages={setMessages as unknown as React.Dispatch<SetStateAction<ChatMessage[]>>}
+              append={async (message) => {
+                setMessages(prev => [...prev, message as Message]);
+              }}
             />
           )}
-        </form>
+        </div>
       </div>
 
       <Artifact
         chatId={id}
         input={input}
         setInput={setInput}
-        handleSubmit={handleSubmit}
         isLoading={isLoading}
         stop={stop}
         attachments={attachments}
         setAttachments={setAttachments}
-        append={append}
+        append={async (message, _options) => {
+          setMessages(prev => [...prev, message as Message]);
+          return '';
+        }}
         messages={messages}
         setMessages={setMessages}
         reload={reload}
         votes={votes}
         isReadonly={isReadonly}
+        // 新增handleSubmit属性
+        handleSubmit={handleSubmit}
       />
     </>
   );
