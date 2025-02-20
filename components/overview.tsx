@@ -20,6 +20,18 @@ export const Overview = () => {
           <MessageIcon size={32} />
         </p>
         <p>
+        ✨ Welcome! ✨
+        </p>
+        <p>
+        Hi there! I'm your AI assistant, ready to help.
+        </p>
+        <p>
+        Ask me anything – let's explore solutions together!
+        </p>
+        <p>
+        Let me know if you'd like adjustments!
+        </p>
+        {/* <p>
           This is an{' '}
           <Link
             className="font-medium underline underline-offset-4"
@@ -45,7 +57,7 @@ export const Overview = () => {
             docs
           </Link>
           .
-        </p>
+        </p> */}
       </div>
     </motion.div>
   );
