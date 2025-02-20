@@ -103,7 +103,8 @@ function PureMultimodalInput({
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Origin': window.location.origin // 显式声明来源
+          'Access-Control-Request-Headers': 'Content-Type',
+          'Access-Control-Request-Method': 'POST'
         },
         mode: 'cors', // 强制 CORS 模式
         body: JSON.stringify({ 
