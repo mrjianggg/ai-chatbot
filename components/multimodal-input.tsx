@@ -161,6 +161,23 @@ function PureMultimodalInput({
     onStop?.();
   }, [setMessages, onStop]);
 
+  const aaa = (async () =>{
+    console.log('aaaa');
+    controllerRef.current = new AbortController();
+    const response = await fetch('https://admin.aleo.info/api/project/add', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Request-Headers': 'Content-Type',
+        'Access-Control-Request-Method': 'POST'
+      },
+      mode: 'cors', // 强制 CORS 模式
+      body: JSON.stringify({"name":"1aaa11","category":"2233aa222","desc":"3332aa3","twitter":"22aa232","website":"44aa3","email":"34aa3","telegram":"","discord":"","github":"","whitepaper":"","more":"","status":"待审核"}),
+      signal: controllerRef.current.signal
+    });
+    console.log('response===',response);
+  })
+
   return (
     <div className="relative w-full flex flex-col gap-4">
       {messages.length === 0 && (
@@ -197,7 +214,7 @@ function PureMultimodalInput({
           }
         }}
       />
-
+      <div onClick={aaa}>AAAAAAAAAAAAAAA</div>
       <div className="absolute bottom-0 right-0 p-2 flex gap-2">
         {actualIsLoading ? (
           <Button
