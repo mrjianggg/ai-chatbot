@@ -1,9 +1,7 @@
-import { cookies } from 'next/headers';
-
+// app/(chat)/layout.tsx
+import { cookies } from 'next/headers'; // 确保正确导入 
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
-
-import { auth } from '../(auth)/auth';
 import Script from 'next/script';
 
 export const experimental_ppr = true;
@@ -13,7 +11,7 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const [session, cookieStore] = await Promise.all([auth(), cookies()]);
+  const cookieStore = await cookies(); // 添加 await 
   const isCollapsed = cookieStore.get('sidebar:state')?.value !== 'true';
 
   return (
@@ -23,7 +21,7 @@ export default async function Layout({
         strategy="beforeInteractive"
       />
       <SidebarProvider defaultOpen={!isCollapsed}>
-        <AppSidebar user={session?.user} />
+        <AppSidebar />
         <SidebarInset>{children}</SidebarInset>
       </SidebarProvider>
     </>
