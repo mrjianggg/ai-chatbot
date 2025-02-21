@@ -19,7 +19,7 @@ import equal from 'fast-deep-equal';
 import { processAIStream } from './stream-utils';
 import { Message, CreateMessage, ChatRequestOptions } from 'ai';
 
-const API_ENDPOINT = 'http://172.18.53.45/api/chat';
+const API_ENDPOINT = 'http://36.189.234.154:1500/api/chat';
 const DEFAULT_MODEL = 'deepseek-r1:32b';
 
 export interface ChatMessage {
