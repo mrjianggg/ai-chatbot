@@ -1,61 +1,144 @@
-<a href="https://chat.vercel.ai/">
-  <img alt="Next.js 14 and App Router-ready AI chatbot." src="app/(chat)/opengraph-image.png">
-  <h1 align="center">Next.js AI Chatbot</h1>
-</a>
+<div align="center">
+  <img src="ollama-nextjs-ui.gif">
+</div>
 
-<p align="center">
-  An Open-Source AI Chatbot Template Built With Next.js and the AI SDK by Vercel.
-</p>
+<h1 align="center">
+  Fully-featured web interface for Ollama LLMs
+</h1>
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#model-providers"><strong>Model Providers</strong></a> ·
-  <a href="#deploy-your-own"><strong>Deploy Your Own</strong></a> ·
-  <a href="#running-locally"><strong>Running locally</strong></a>
-</p>
-<br/>
+<div align="center">
+  
+![GitHub Repo stars](https://img.shields.io/github/stars/jakobhoeg/nextjs-ollama-llm-ui)
+  
+</div>
 
-## Features
+Get up and running with Large Language Models **quickly**, **locally** and even **offline**.
+This project aims to be the easiest way for you to get started with LLMs. No tedious and annoying setup required!
 
-- [Next.js](https://nextjs.org) App Router
-  - Advanced routing for seamless navigation and performance
-  - React Server Components (RSCs) and Server Actions for server-side rendering and increased performance
-- [AI SDK](https://sdk.vercel.ai/docs)
-  - Unified API for generating text, structured objects, and tool calls with LLMs
-  - Hooks for building dynamic chat and generative user interfaces
-  - Supports OpenAI (default), Anthropic, Cohere, and other model providers
-- [shadcn/ui](https://ui.shadcn.com)
-  - Styling with [Tailwind CSS](https://tailwindcss.com)
-  - Component primitives from [Radix UI](https://radix-ui.com) for accessibility and flexibility
-- Data Persistence
-  - [Vercel Postgres powered by Neon](https://vercel.com/storage/postgres) for saving chat history and user data
-  - [Vercel Blob](https://vercel.com/storage/blob) for efficient file storage
-- [NextAuth.js](https://github.com/nextauthjs/next-auth)
-  - Simple and secure authentication
+> This is a hobby project. If you want a more complete experience, I suggest taking a look at [this](https://github.com/open-webui/open-webui) instead.
 
-## Model Providers
+# Features ✨
 
-This template ships with OpenAI `gpt-4o` as the default. However, with the [AI SDK](https://sdk.vercel.ai/docs), you can switch LLM providers to [OpenAI](https://openai.com), [Anthropic](https://anthropic.com), [Cohere](https://cohere.com/), and [many more](https://sdk.vercel.ai/providers/ai-sdk-providers) with just a few lines of code.
+- **Beautiful & intuitive UI:** Inspired by ChatGPT, to enhance similarity in the user experience.
+- **Fully local:** Stores chats in localstorage for convenience. No need to run a database.
+- **Fully responsive:** Use your phone to chat, with the same ease as on desktop.
+- **Easy setup:** No tedious and annoying setup required. Just clone the repo and you're good to go!
+- **Code syntax highligting:** Messages that include code, will be highlighted for easy access.
+- **Copy codeblocks easily:** Easily copy the highlighted code with one click.
+- **Download/Pull & Delete models:** Easily download and delete models directly from the interface.
+- **Switch between models:** Switch between models fast with a click.
+- **Chat history:** Chats are saved and easily accessed.
+- **Light & Dark mode:** Switch between light & dark mode.
 
-## Deploy Your Own
+# Preview
 
-You can deploy your own version of the Next.js AI Chatbot to Vercel with one click:
+https://github.com/jakobhoeg/nextjs-ollama-llm-ui/assets/114422072/08eaed4f-9deb-4e1b-b87a-ba17d81b9a02
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fai-chatbot&env=AUTH_SECRET,OPENAI_API_KEY&envDescription=Learn%20more%20about%20how%20to%20get%20the%20API%20Keys%20for%20the%20application&envLink=https%3A%2F%2Fgithub.com%2Fvercel%2Fai-chatbot%2Fblob%2Fmain%2F.env.example&demo-title=AI%20Chatbot&demo-description=An%20Open-Source%20AI%20Chatbot%20Template%20Built%20With%20Next.js%20and%20the%20AI%20SDK%20by%20Vercel.&demo-url=https%3A%2F%2Fchat.vercel.ai&stores=[{%22type%22:%22postgres%22},{%22type%22:%22blob%22}])
+# Requisites ⚙️
 
-## Running locally
+To use the web interface, these requisites must be met:
 
-You will need to use the environment variables [defined in `.env.example`](.env.example) to run Next.js AI Chatbot. It's recommended you use [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) for this, but a `.env` file is all that is necessary.
+1. Download [Ollama](https://ollama.com/download) and have it running. Or run it in a Docker container. Check the [docs](https://github.com/ollama/ollama) for instructions.
+2. Node.js (18+) and npm is required. [Download](https://nodejs.org/en/download)
 
-> Note: You should not commit your `.env` file or it will expose secrets that will allow others to control access to your various OpenAI and authentication provider accounts.
+# Quick start with Docker
 
-1. Install Vercel CLI: `npm i -g vercel`
-2. Link local instance with Vercel and GitHub accounts (creates `.vercel` directory): `vercel link`
-3. Download your environment variables: `vercel env pull`
+## Installation with prebuilt Docker image
 
-```bash
-pnpm install
-pnpm dev
+- **If Ollama is running on your pc**:
+
+```
+docker run -d -p 8080:3000 --add-host=host.docker.internal:host-gateway -e OLLAMA_URL=http://host.docker.internal:11434 --name nextjs-ollama-ui --restart always jakobhoeg/nextjs-ollama-ui:latest
 ```
 
-Your app template should now be running on [localhost:3000](http://localhost:3000/).
+- **If Ollama is on a different server than the Web UI**:
+
+```
+docker run -d -p 8080:3000 --add-host=host.docker.internal:host-gateway -e OLLAMA_URL=http://example.com:11434 --name nextjs-ollama-ui --restart always jakobhoeg/nextjs-ollama-ui:latest
+```
+
+> You can also change the default 8080 port if you wish.
+
+# Installation locally 📖
+
+[![Packaging status](https://repology.org/badge/vertical-allrepos/nextjs-ollama-llm-ui.svg?columns=3)](https://repology.org/project/nextjs-ollama-llm-ui/versions)
+
+Use a pre-build package from one of the supported package managers to run a local environment of the web interface.
+Alternatively you can install from source with the instructions below.
+
+> [!NOTE]  
+> If your frontend runs on something other than `http://localhost` or `http://127.0.0.1`, you'll need to set the OLLAMA_ORIGINS to your frontend url.
+>
+> This is also stated in the [documentation](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-do-i-configure-ollama-server):
+>
+> `Ollama allows cross-origin requests from 127.0.0.1 and 0.0.0.0 by default. Additional origins can be configured with OLLAMA_ORIGINS`
+
+## Install from source
+
+**1. Clone the repository to a directory on your pc via command prompt:**
+
+```
+git clone https://github.com/jakobhoeg/nextjs-ollama-llm-ui
+```
+
+**2. Open the folder:**
+
+```
+cd nextjs-ollama-llm-ui
+```
+
+**3. Rename the `.example.env` to `.env`:**
+
+```
+mv .example.env .env
+```
+
+**4. If your instance of Ollama is NOT running on the default ip-address and port, change the variable in the .env file to fit your usecase:**
+
+```
+OLLAMA_URL="http://localhost:11434"
+```
+
+**5. Install dependencies:**
+
+```
+npm install
+```
+
+**6. Start the development server:**
+
+```
+npm run dev
+```
+
+**5. Go to [localhost:3000](http://localhost:3000) and start chatting with your favourite model!**
+
+# Upcoming features
+
+This is a to-do list consisting of upcoming features.
+
+- ✅ Voice input support
+- ✅ Code syntax highlighting
+- ✅ Ability to send an image in the prompt to utilize vision language models.
+- ✅ Ability to regenerate responses
+- ⬜️ Import and export chats
+
+# Tech stack
+
+[NextJS](https://nextjs.org/) - React Framework for the Web
+
+[TailwindCSS](https://tailwindcss.com/) - Utility-first CSS framework
+
+[shadcn-ui](https://ui.shadcn.com/) - UI component built using Radix UI and Tailwind CSS
+
+[shadcn-chat](https://github.com/jakobhoeg/shadcn-chat) - Chat components for NextJS/React projects
+
+[Framer Motion](https://www.framer.com/motion/) - Motion/animation library for React
+
+[Lucide Icons](https://lucide.dev/) - Icon library
+
+# Helpful links
+
+[Medium Article](https://medium.com/@bartek.lewicz/launch-your-own-chatgpt-clone-for-free-on-colab-shareable-and-online-in-less-than-10-minutes-da19e44be5eb) - How to launch your own ChatGPT clone for free on Google Colab. By Bartek Lewicz.
+
+[Lobehub mention](https://lobehub.com/blog/5-ollama-web-ui-recommendation#5-next-js-ollama-llm-ui) - Five Excellent Free Ollama WebUI Client Recommendations
